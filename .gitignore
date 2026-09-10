@@ -1,0 +1,14 @@
+# Workflow JSONs are personal: they embed prompt text and input filenames
+# (which on Midjourney-style exports carry the username and the full prompt).
+# Kept out deliberately rather than by accident — add yours if you want them
+# versioned, having read what is actually in them.
+*.json
+
+# inventory.sh output: the extracted tarball plus ~99 of ComfyUI's own bundled
+# template workflows, swept up by the loose find. Noise, and not ours to
+# redistribute.
+extract/
+comfyui-extract.tgz
+
+# Full paths from the machine it was inventoried on.
+usage.txt
