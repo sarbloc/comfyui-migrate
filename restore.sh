@@ -27,8 +27,21 @@ umt5_xxl_fp8_e4m3fn_scaled.safetensors|models/text_encoders|6734380928|Comfy-Org
 wan_2.1_vae.safetensors|models/vae|254002624|Comfy-Org/Wan_2.1_ComfyUI_Repackaged|split_files/vae/wan_2.1_vae.safetensors
 wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors|models/loras|1226977424|Comfy-Org/Wan_2.2_ComfyUI_Repackaged|split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors
 wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors|models/loras|1226977424|Comfy-Org/Wan_2.2_ComfyUI_Repackaged|split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors
+qwen_image_edit_2511_fp8mixed.safetensors|models/diffusion_models|20533762817|Comfy-Org/Qwen-Image-Edit_ComfyUI|split_files/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors
+qwen_2.5_vl_7b_fp8_scaled.safetensors|models/text_encoders|9384670680|Comfy-Org/HunyuanVideo_1.5_repackaged|split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors
+Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors|models/loras|849608296|lightx2v/Qwen-Image-Edit-2511-Lightning|Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors
+qwen_image_vae.safetensors|models/vae|253806246|Comfy-Org/Qwen-Image_ComfyUI|split_files/vae/qwen_image_vae.safetensors
 EOF
 )
+
+# ONE LIST, NOT TWO SETS. Wan 2.2 i2v and Qwen-Image-Edit are separate model
+# families but a single environment: the workflows are being merged, so both
+# have to be present at once. Splitting this into selectable sets would add a
+# mode to choose between on every run and buy nothing.
+#
+# The Qwen text encoder really does live in a HunyuanVideo repo — Comfy-Org
+# reuses repacks across model families. Verified by HTTP 2026-09-10; it is not
+# a typo, so do not "fix" it.
 
 # DELIBERATELY OMITTED: umt5-xxl-enc-fp8_e4m3fn.safetensors (6.27 GB).
 # The old volume carried TWO copies of the same text encoder — Comfy's repack
