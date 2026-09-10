@@ -31,6 +31,10 @@ TAR="${2:-$(dirname "$ROOT")/comfyui-extract.tgz}"
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 mkdir -p "$OUT/extract"
+# Set when a copy of something irreplaceable fails. The tarball is still
+# written with what was got, but the run exits 1 and says so — a "DONE" over
+# a partial copy of your workflows is the worst outcome this script has.
+fail=0
 
 # --- 1. WORKFLOWS — the actual work, a few MB at most ------------------------
 # ComfyUI has moved these around across versions, so take every plausible
@@ -40,8 +44,12 @@ for d in "$ROOT/user/default/workflows" "$ROOT/user/workflows" "$ROOT/workflows"
   if [[ -d "$d" ]]; then
     rel="${d#"$ROOT"/}"
     mkdir -p "$OUT/extract/$rel"
-    cp -a "$d/." "$OUT/extract/$rel/" 2>/dev/null
-    echo "    $rel ($(find "$d" -type f | wc -l) files)"
+    if cp -a "$d/." "$OUT/extract/$rel/"; then
+      echo "    $rel ($(find "$d" -type f | wc -l) files)"
+    else
+      echo "    COPY INCOMPLETE  $rel — see cp errors above" >&2
+      fail=1
+    fi
   fi
 done
 # Loose workflow JSON anywhere outside models/ and custom_nodes/.
@@ -115,8 +123,13 @@ if [[ -d "$ROOT/input" ]]; then
   input_mb=${input_mb:-0}
   if (( input_mb <= INPUT_CAP_MB )); then
     mkdir -p "$OUT/extract/input"
-    cp -a "$ROOT/input/." "$OUT/extract/input/" 2>/dev/null
-    echo "==> input/ (${input_mb} MB, taken)"
+    if cp -a "$ROOT/input/." "$OUT/extract/input/"; then
+      echo "==> input/ (${input_mb} MB, taken)"
+    else
+      echo "==> input/ COPY INCOMPLETE — see cp errors above" >&2
+      echo "# --- input/ copy INCOMPLETE: some files failed to copy, see the run's cp errors. ---" >> "$OUT/extract/REVIEW.txt"
+      fail=1
+    fi
   else
     echo "==> input/ (${input_mb} MB, over the ${INPUT_CAP_MB} MB cap — listed in REVIEW.txt, NOT taken)"
     {
@@ -144,5 +157,9 @@ echo "==> disk usage"
 # --- 6. one small tarball ----------------------------------------------------
 tar -czf "$TAR" -C "$OUT" extract || { echo "could not write $TAR" >&2; exit 1; }
 echo
+if [[ "$fail" != 0 ]]; then
+  echo "INCOMPLETE -> $TAR  ($(du -h "$TAR" | cut -f1)) — some copies failed, see above. Do NOT delete the volume on this." >&2
+  exit 1
+fi
 echo "DONE -> $TAR  ($(du -h "$TAR" | cut -f1))"
 echo "Pull it down, then: runpodctl send $TAR"
