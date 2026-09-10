@@ -1,8 +1,9 @@
-# Workflow JSONs are personal: they embed prompt text and input filenames
+# Raw workflow JSONs are personal: they embed prompt text and input filenames
 # (which on Midjourney-style exports carry the username and the full prompt).
-# Kept out deliberately rather than by accident — add yours if you want them
-# versioned, having read what is actually in them.
+# Only the sanitised copies under workflows/ are versioned — produce them with
+# sanitize-workflow.py, and check-workflows.sh refuses anything unsanitised.
 *.json
+!workflows/*.json
 
 # inventory.sh output: the extracted tarball plus ~99 of ComfyUI's own bundled
 # template workflows, swept up by the loose find. Noise, and not ours to

@@ -1,0 +1,21 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck
+        run: shellcheck --severity=warning ./*.sh
+
+      - name: bash syntax
+        run: for f in ./*.sh; do bash -n "$f"; done
+
+      - name: workflows are sanitised
+        run: bash check-workflows.sh

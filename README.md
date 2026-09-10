@@ -31,8 +31,28 @@ bash restore.sh <set> [COMFY_ROOT]      # COMFY_ROOT default: /workspace/ComfyUI
 | `qwen-depth` | Qwen-Image + Lotus depth + ControlNet | 35 GB |
 | `all` | everything, deduplicated | 90 GB |
 
-Then drop your workflow JSONs into `<ComfyUI>/user/default/workflows/`, or
-drag them onto the ComfyUI canvas in the browser.
+Then copy `workflows/*.json` into `<ComfyUI>/user/default/workflows/`, or
+drag them onto the ComfyUI canvas in the browser. Set the start image and
+the prompt — both are placeholders (`example.png`, `<your prompt>`).
+
+## Workflows
+
+`workflows/` holds sanitised templates of the graphs this repo exists to
+protect. A ComfyUI workflow carries three personal things next to a lot of
+stock template content: the `LoadImage` filename (Midjourney exports embed
+the account name and the full prompt in it), the positive prompt, and the
+viewport position. `sanitize-workflow.py` strips exactly those and nothing
+else, walking subgraph nodes as well as top-level ones:
+
+```sh
+python3 sanitize-workflow.py ~/my-workflow.json workflows/my-workflow.json
+bash check-workflows.sh          # what CI runs; refuses anything unsanitised
+```
+
+The raw files stay out of git (`*.json` is ignored; `workflows/` is the one
+exception). `check-workflows.sh` fails on any username, local path, real
+image filename or real prompt, so forgetting the sanitiser is caught before
+merge rather than after.
 
 **Pull one set, not `all`.** Three workflows come to 90 GB against a 120 GB
 volume, and a session usually needs one of them. `all` exists for a machine
