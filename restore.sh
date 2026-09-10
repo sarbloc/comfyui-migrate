@@ -3,13 +3,16 @@
 #
 #   bash restore.sh <set> [COMFY_ROOT]      COMFY_ROOT default: /workspace/ComfyUI
 #
-#   wan          Wan 2.2 image-to-video           ~36 GB
-#   qwen-edit    Qwen-Image-Edit 2511             ~29 GB
-#   qwen-depth   Qwen-Image + Lotus depth + CN    ~26 GB
-#   all          everything                       ~91 GB
+#   wan          Wan 2.2 image-to-video
+#   qwen-edit    Qwen-Image-Edit 2511
+#   qwen-depth   Qwen-Image + Lotus depth + ControlNet
+#   all          everything, deduplicated
+#
+# Run with no arguments for sizes. They are summed from the tables below, not
+# written here: written here, qwen-depth said ~26 GB when it was 35.
 #
 # SETS, BECAUSE THE DISK RAN OUT. This began as one flat list — correct when
-# there was one workflow. At three it is ~91 GB against a 120 GB volume, and
+# there was one workflow. At three it is ~90 GB against a 120 GB volume, and
 # pulling all of it to run one workflow wastes both disk and download.
 #
 # SETS OVERLAP, AND THAT IS DELIBERATE. Each set lists EVERYTHING its workflow
@@ -27,11 +30,24 @@ set -uo pipefail
 SET="${1:-}"
 ROOT="${2:-/workspace/ComfyUI}"
 
+# Sum a set's expected bytes, deduplicated by filename so `all` counts a
+# shared file once. usage() prints these so the sizes cannot drift from the
+# tables — the header comment used to carry them and was 9 GB out.
+set_gib() {
+  awk -F'|' 'NF >= 3 && !seen[$1]++ { s += $3 } END { printf "%.1f", s / 1073741824 }' <<< "$1"
+}
+
 usage() {
-  sed -n '3,9p' "$0" | sed 's/^# \?//'
+  cat <<EOF
+usage: bash restore.sh <set> [COMFY_ROOT]      COMFY_ROOT default: /workspace/ComfyUI
+
+  wan          Wan 2.2 image-to-video                  $(set_gib "$MODELS_WAN") GiB
+  qwen-edit    Qwen-Image-Edit 2511                    $(set_gib "$MODELS_QWEN_EDIT") GiB
+  qwen-depth   Qwen-Image + Lotus depth + ControlNet   $(set_gib "$MODELS_QWEN_DEPTH") GiB
+  all          everything, deduplicated                $(set_gib "$MODELS_ALL") GiB
+EOF
   exit 2
 }
-[[ -z "$SET" ]] && usage
 
 # ---------------------------------------------------------------------------
 # name | dest_dir | expected_bytes | hf_repo | path_in_repo
@@ -72,11 +88,14 @@ qwen_image_vae.safetensors|models/vae|253806246|Comfy-Org/Qwen-Image_ComfyUI|spl
 EOF
 )
 
+MODELS_ALL="$MODELS_WAN"$'\n'"$MODELS_QWEN_EDIT"$'\n'"$MODELS_QWEN_DEPTH"
+
+[[ -z "$SET" ]] && usage
 case "$SET" in
   wan)        MODELS="$MODELS_WAN" ;;
   qwen-edit)  MODELS="$MODELS_QWEN_EDIT" ;;
   qwen-depth) MODELS="$MODELS_QWEN_DEPTH" ;;
-  all)        MODELS="$MODELS_WAN"$'\n'"$MODELS_QWEN_EDIT"$'\n'"$MODELS_QWEN_DEPTH" ;;
+  all)        MODELS="$MODELS_ALL" ;;
   *)          echo "unknown set: $SET" >&2; usage ;;
 esac
 
@@ -87,8 +106,11 @@ esac
 
 [[ -d "$ROOT" ]] || { echo "No ComfyUI at $ROOT — install it first, or pass the path." >&2; exit 1; }
 cd "$ROOT" || exit 1
-command -v hf >/dev/null || pip install -q --upgrade "huggingface_hub[cli]" || {
-  echo "could not install huggingface_hub" >&2; exit 1; }
+command -v hf >/dev/null || {
+  pip install -q --upgrade "huggingface_hub[cli]" || { echo "could not install huggingface_hub" >&2; exit 1; }
+  hash -r
+  command -v hf >/dev/null || { echo "huggingface_hub installed but 'hf' is not on PATH — add pip's bin dir" >&2; exit 1; }
+}
 
 # Is an on-disk size close enough to the recorded one to be the same model?
 #
@@ -126,7 +148,9 @@ while IFS='|' read -r name dest want repo path; do
   [[ -f "$target" ]] && echo "  re-fetching (size $(stat -c%s "$target") vs $want)  $name"
 
   echo "  downloading   $name"
-  if ! hf download "$repo" "$path" --local-dir "$ROOT/$dest" >/dev/null 2>&1; then
+  # </dev/null: this loop reads $MODELS on stdin; a child that reads stdin
+  # would eat the remaining lines.
+  if ! hf download "$repo" "$path" --local-dir "$ROOT/$dest" >/dev/null 2>&1 </dev/null; then
     echo "  FAILED to download $name from $repo :: $path" >&2
     fail=1
     continue
@@ -140,6 +164,9 @@ while IFS='|' read -r name dest want repo path; do
     # rmdir refuses to touch anything non-empty, which is the point.
     rmdir -p --ignore-fail-on-non-empty "$(dirname "$nested")" 2>/dev/null
   fi
+  # `hf --local-dir` leaves its own .cache/huggingface beside the model. Not
+  # ours, and it shows up in the next inventory's REVIEW.txt as noise.
+  rm -rf "$ROOT/$dest/.cache"
 
   got=$(stat -c%s "$target" 2>/dev/null || echo 0)
   if [[ "$got" == "0" ]]; then
