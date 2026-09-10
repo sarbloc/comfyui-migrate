@@ -127,8 +127,13 @@ RunpodDirect installed through Manager by name.
 
 ## Why size is checked, and why not exactly
 
-Every download is size-checked against `models.tsv`, recorded from the
-original volume. The check is deliberately **not** an equality test.
+Every download is size-checked against the byte count in `restore.sh`'s own
+tables — the Wan sizes recorded from the original volume, the Qwen ones from
+HuggingFace when the paths were verified. `models.tsv` is the inventory
+snapshot of that volume, not the restore's input; its first-MB hash column
+exists to tell same-size files apart on the source (the two Wan LoRAs), and
+is not used on restore because upstream re-packs change the safetensors
+header. The check is deliberately **not** an equality test.
 
 The first version demanded exact bytes and would have rejected all four
 diffusion/encoder files: Comfy-Org had re-packed them upstream, about 0.01%
