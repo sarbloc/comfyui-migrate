@@ -60,10 +60,18 @@ def sanitize_node(node):
     return None
 
 
+def iter_graphs(workflow):
+    """The root graph and every subgraph — each carries its own `extra.ds`."""
+    yield "root", workflow
+    for subgraph in workflow.get("definitions", {}).get("subgraphs", []):
+        yield f"subgraph {subgraph.get('name') or subgraph.get('id')}", subgraph
+
+
 def sanitize(workflow):
     changes = [c for c in map(sanitize_node, iter_nodes(workflow)) if c]
-    if workflow.get("extra", {}).pop("ds", None) is not None:
-        changes.append("extra.ds: viewport dropped")
+    for label, graph in iter_graphs(workflow):
+        if graph.get("extra", {}).pop("ds", None) is not None:
+            changes.append(f"{label}: extra.ds viewport dropped")
     return changes
 
 

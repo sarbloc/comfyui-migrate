@@ -2247,13 +2247,6 @@
           }
         ],
         "extra": {
-          "ds": {
-            "scale": 0.7926047855889957,
-            "offset": [
-              -30.12529469925767,
-              690.3829855122884
-            ]
-          },
           "frontendVersion": "1.37.11",
           "workflowRendererVersion": "LG",
           "VHS_latentpreview": false,

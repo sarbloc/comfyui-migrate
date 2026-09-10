@@ -47,8 +47,13 @@ for n in nodes(wf):
     if n.get("type") == "CLIPTextEncode" and "negative" not in (n.get("title") or "").lower() \
             and w[0] != "<your prompt>":
         bad.append(f"CLIPTextEncode {n['id']} has a real prompt")
-if "ds" in wf.get("extra", {}):
-    bad.append("extra.ds viewport present")
+graphs = [("root", wf)] + [
+    (f"subgraph {sg.get('name') or sg.get('id')}", sg)
+    for sg in wf.get("definitions", {}).get("subgraphs", [])
+]
+for label, g in graphs:
+    if "ds" in g.get("extra", {}):
+        bad.append(f"{label}: extra.ds viewport present")
 for b in bad:
     print(f"    {b}", file=sys.stderr)
 sys.exit(1 if bad else 0)
