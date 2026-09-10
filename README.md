@@ -152,15 +152,18 @@ four newer re-packs. First real run completed clean.
 The other half: run it on an existing install to produce the manifests here.
 
 ```sh
-bash inventory.sh /path/to/ComfyUI   # writes /workspace/comfyui-extract.tgz
+bash inventory.sh /path/to/ComfyUI [out.tgz]   # default: comfyui-extract.tgz beside the root
 ```
 
-It captures workflows, custom nodes with git remotes and commits where they
-exist, a model manifest, and a disk-usage breakdown. It also writes
-`REVIEW.txt` listing anything under `loras/`, `embeddings/` or `checkpoints/`
-that might be **yours** rather than downloaded — a trained LoRA is
-indistinguishable from a fetched one by shape, and it is the one thing a
-manifest cannot replace. Read that file before deleting any volume.
+It captures workflows, `input/` (the start frames are yours; taken when
+under 200 MB, listed for you to decide when over), custom nodes with git
+remotes and commits where they exist, a model manifest, and a disk-usage
+breakdown. It also writes `REVIEW.txt` listing anything under `loras/`,
+`embeddings/` or `checkpoints/` that might be **yours** rather than
+downloaded — a trained LoRA is indistinguishable from a fetched one by shape,
+and it is the one thing a manifest cannot replace. Read that file before
+deleting any volume. `output/` is only measured, not taken: renders are
+reproducible from workflow plus input.
 
 ## Notes on renting
 
