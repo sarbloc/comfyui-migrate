@@ -3,8 +3,12 @@
 # small irreplaceable parts.
 #
 # RUN THIS ON THE POD (CPU-only is fine — this touches no GPU).
-# It writes ONE tarball to /workspace/comfyui-extract.tgz. Pull that down and
-# you can rebuild the environment anywhere.
+#
+#   bash inventory.sh [COMFY_ROOT] [OUT_TARBALL]
+#
+# It writes ONE tarball, comfyui-extract.tgz, beside the ComfyUI root unless
+# you give it a path. Pull that down and you can rebuild the environment
+# anywhere.
 #
 # The premise: a ComfyUI volume splits into two very unequal halves.
 #   - models        : large, boring, RE-DOWNLOADABLE. We record NAMES, not bytes.
@@ -22,8 +26,10 @@ if [[ -z "$ROOT" ]]; then
 fi
 [[ -d "$ROOT" ]] || { echo "ComfyUI root not found. Pass it: $0 /path/to/ComfyUI" >&2; exit 1; }
 echo "ComfyUI root: $ROOT"
+TAR="${2:-$(dirname "$ROOT")/comfyui-extract.tgz}"
 
 OUT=$(mktemp -d)
+trap 'rm -rf "$OUT"' EXIT
 mkdir -p "$OUT/extract"
 
 # --- 1. WORKFLOWS — the actual work, a few MB at most ------------------------
@@ -32,7 +38,7 @@ mkdir -p "$OUT/extract"
 echo "==> workflows"
 for d in "$ROOT/user/default/workflows" "$ROOT/user/workflows" "$ROOT/workflows" "$ROOT/web/workflows"; do
   if [[ -d "$d" ]]; then
-    rel="${d#$ROOT/}"
+    rel="${d#"$ROOT"/}"
     mkdir -p "$OUT/extract/$rel"
     cp -a "$d/." "$OUT/extract/$rel/" 2>/dev/null
     echo "    $rel ($(find "$d" -type f | wc -l) files)"
@@ -69,10 +75,13 @@ echo "==> model manifest"
       \( -name '*.safetensors' -o -name '*.ckpt' -o -name '*.pt' -o -name '*.pth' \
          -o -name '*.bin' -o -name '*.gguf' -o -name '*.onnx' -o -name '*.sft' \) \
       -printf '%s\t%p\n' 2>/dev/null | sort -rn | while IFS=$'\t' read -r size path; do
-        # Hashing 50GB would dominate runtime for no benefit — the first MB is
-        # enough to tell two files apart when you are re-downloading by name.
+        # Hashing 50GB would dominate runtime for no benefit. The first MB is
+        # enough to tell two same-size files apart ON THIS VOLUME — the two
+        # Wan LoRAs are byte-identical in size. It is NOT a restore-side
+        # check: upstream re-packs change the safetensors header, and
+        # `hf download` already verifies the full sha256 against HuggingFace.
         h=$(head -c 1048576 "$path" 2>/dev/null | sha256sum | cut -d' ' -f1)
-        printf '%s\t%s\t%s\n' "$size" "$h" "${path#$ROOT/}"
+        printf '%s\t%s\t%s\n' "$size" "$h" "${path#"$ROOT"/}"
       done
   fi
 } > "$OUT/extract/models.tsv"
@@ -86,13 +95,36 @@ echo "==> possible non-stock weights (REVIEW THESE)"
   echo "# Files that may be YOURS rather than downloaded. Review before deleting the volume."
   for d in loras embeddings checkpoints; do
     [[ -d "$ROOT/models/$d" ]] || continue
-    find "$ROOT/models/$d" -type f -newermt '2020-01-01' -printf '%TY-%Tm-%Td\t%s\t%p\n' 2>/dev/null
+    # Skip hf's own .cache, Comfy's put_*_here placeholders and empty files —
+    # on the first real run they were 7 of 10 lines, and a noisy list of
+    # "review these" gets skimmed.
+    find "$ROOT/models/$d" -type f -size +0 \
+      -not -path '*/.cache/*' -not -name 'put_*_here' \
+      -printf '%TY-%Tm-%Td\t%s\t%p\n' 2>/dev/null
   done
-  echo "# --- outputs ---"
+  echo "# --- output/ (listed only: renders, reproducible from workflow + input) ---"
   [[ -d "$ROOT/output" ]] && du -sh "$ROOT/output" 2>/dev/null
-  echo "# --- input ---"
-  [[ -d "$ROOT/input" ]] && du -sh "$ROOT/input" 2>/dev/null
 } > "$OUT/extract/REVIEW.txt"
+
+# --- 4b. INPUT IMAGES — small, and as unrecoverable as the workflows --------
+# The start frame of an image-to-video graph is yours; the render is not.
+# Taken when small. Above the cap it is listed in REVIEW.txt and you decide.
+INPUT_CAP_MB=200
+if [[ -d "$ROOT/input" ]]; then
+  input_mb=$(du -sm "$ROOT/input" 2>/dev/null | cut -f1)
+  input_mb=${input_mb:-0}
+  if (( input_mb <= INPUT_CAP_MB )); then
+    mkdir -p "$OUT/extract/input"
+    cp -a "$ROOT/input/." "$OUT/extract/input/" 2>/dev/null
+    echo "==> input/ (${input_mb} MB, taken)"
+  else
+    echo "==> input/ (${input_mb} MB, over the ${INPUT_CAP_MB} MB cap — listed in REVIEW.txt, NOT taken)"
+    {
+      echo "# --- input/ NOT taken: ${input_mb} MB exceeds ${INPUT_CAP_MB} MB. Copy what matters by hand. ---"
+      find "$ROOT/input" -type f -printf '%s\t%p\n' 2>/dev/null | sort -rn | head -100
+    } >> "$OUT/extract/REVIEW.txt"
+  fi
+fi
 
 # --- 5. SIZE PICTURE — what you are actually paying for ---------------------
 echo "==> disk usage"
@@ -104,13 +136,11 @@ echo "==> disk usage"
   du -sh "$ROOT"/models/* 2>/dev/null | sort -rh
   echo
   echo "# whole volume"
-  df -h /workspace 2>/dev/null
+  df -h "$ROOT" 2>/dev/null
 } > "$OUT/extract/usage.txt"
 
 # --- 6. one small tarball ----------------------------------------------------
-TAR=/workspace/comfyui-extract.tgz
-tar -czf "$TAR" -C "$OUT" extract
-rm -rf "$OUT"
+tar -czf "$TAR" -C "$OUT" extract || { echo "could not write $TAR" >&2; exit 1; }
 echo
 echo "DONE -> $TAR  ($(du -h "$TAR" | cut -f1))"
 echo "Pull it down, then: runpodctl send $TAR"
