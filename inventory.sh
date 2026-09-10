@@ -121,7 +121,9 @@ if [[ -d "$ROOT/input" ]]; then
     echo "==> input/ (${input_mb} MB, over the ${INPUT_CAP_MB} MB cap — listed in REVIEW.txt, NOT taken)"
     {
       echo "# --- input/ NOT taken: ${input_mb} MB exceeds ${INPUT_CAP_MB} MB. Copy what matters by hand. ---"
-      find "$ROOT/input" -type f -printf '%s\t%p\n' 2>/dev/null | sort -rn | head -100
+      # Every file, not a top-N: this is the only record of them once the
+      # volume is gone, and the small ones are the likeliest to matter.
+      find "$ROOT/input" -type f -printf '%s\t%p\n' 2>/dev/null | sort -rn
     } >> "$OUT/extract/REVIEW.txt"
   fi
 fi
