@@ -49,6 +49,26 @@ EOF
 # only if ComfyUI reports a missing encoder; otherwise it is 6 GB of volume
 # you were paying for twice.
 
+# Is an on-disk size close enough to the recorded one to be the same model?
+#
+# NOT an equality test, deliberately. Verified 2026-09-10: Comfy-Org had
+# re-packed four of these upstream, ~0.01% larger, which is a newer revision
+# of the same model rather than a wrong file. What needs catching is a WRONG
+# or TRUNCATED download, which is orders of magnitude off, not a fraction of
+# a percent. `hf` verifies its own download integrity; this guards against a
+# path pointing at a different model entirely.
+#
+# One owner for the rule, because the "already present" check and the
+# "download finished" check MUST agree — when they did not, every run
+# re-downloaded 39 GB to reproduce files that were already correct.
+size_ok() {
+  local got="$1" want="$2" delta
+  [[ "$got" == "0" || -z "$got" ]] && return 1
+  [[ "$got" == "$want" ]] && return 0
+  delta=$(( got > want ? got - want : want - got ))
+  (( delta * 50 <= want ))
+}
+
 echo "=== models ==="
 fail=0
 while IFS='|' read -r name dest want repo path; do
@@ -56,14 +76,20 @@ while IFS='|' read -r name dest want repo path; do
   mkdir -p "$ROOT/$dest"
   target="$ROOT/$dest/$name"
 
-  if [[ -f "$target" ]]; then
-    got=$(stat -c%s "$target")
-    if [[ "$got" == "$want" ]]; then
-      echo "  ok (present)  $name"
-      continue
-    fi
-    echo "  re-fetching (size $got != $want)  $name"
+  # ALREADY PRESENT? Uses the SAME tolerance as the post-download check below,
+  # and that is the whole point of it being a function.
+  #
+  # These two tests disagreed at first: this one demanded exact bytes while the
+  # other allowed 2%. So a file restored from HuggingFace — the newer re-pack,
+  # ~0.01% larger than the size recorded from the original volume — failed the
+  # "present" test on every subsequent run and was re-downloaded. Four Wan
+  # files, 39 GB, every time, to arrive at byte-identical copies of what was
+  # already on disk.
+  if [[ -f "$target" ]] && size_ok "$(stat -c%s "$target")" "$want"; then
+    echo "  ok (present)  $name"
+    continue
   fi
+  [[ -f "$target" ]] && echo "  re-fetching (size $(stat -c%s "$target") vs $want)  $name"
 
   echo "  downloading   $name"
   # Downloads to $dest/<path_in_repo>; we then flatten it to $dest/$name.
@@ -96,16 +122,13 @@ while IFS='|' read -r name dest want repo path; do
   if [[ "$got" == "0" ]]; then
     echo "  MISSING       $name — download produced nothing" >&2
     fail=1
+  elif ! size_ok "$got" "$want"; then
+    echo "  WRONG FILE    $name: got $got, expected ~$want — check the repo path" >&2
+    fail=1
   elif [[ "$got" == "$want" ]]; then
     echo "  ok            $name"
   else
-    delta=$(( got > want ? got - want : want - got ))
-    if (( delta * 50 > want )); then
-      echo "  WRONG FILE    $name: got $got, expected ~$want — check the repo path" >&2
-      fail=1
-    else
-      echo "  ok (newer)    $name  [$got vs $want recorded — upstream re-pack]"
-    fi
+    echo "  ok (newer)    $name  [$got vs $want recorded — upstream re-pack]"
   fi
 done <<< "$MODELS"
 
